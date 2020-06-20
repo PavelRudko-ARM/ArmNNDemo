@@ -1,0 +1,2 @@
+rootProject.name='ArmNN Demo'
+include ':app'
