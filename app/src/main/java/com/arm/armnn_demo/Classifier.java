@@ -8,7 +8,11 @@ import java.io.InputStream;
 
 public class Classifier {
 
+    public static final int INPUT_WIDTH = 224;
+    public static final int INPUT_HEIGHT = 224;
+
     private String[] classLabels;
+    private long latestInferenceTime = 0;
 
     public Classifier(AssetManager assetManager) {
         prepareNetwork(assetManager);
@@ -16,11 +20,17 @@ public class Classifier {
     }
 
     public String predict(Bitmap bitmap) {
-        bitmap = Bitmap.createScaledBitmap(bitmap, 224, 224, true);
+        bitmap = Bitmap.createScaledBitmap(bitmap, INPUT_WIDTH, INPUT_HEIGHT, true);
         float[] imageData = getImageData(bitmap);
+        long startTime = System.currentTimeMillis();
         int prediction = runNetwork(imageData);
+        latestInferenceTime = System.currentTimeMillis() - startTime;
 
         return classLabels[prediction];
+    }
+
+    public long getLatestInferenceTime() {
+        return latestInferenceTime;
     }
 
     public void destroy() {

@@ -19,7 +19,6 @@ import android.graphics.Rect;
 import android.graphics.YuvImage;
 import android.os.Bundle;
 import android.util.DisplayMetrics;
-import android.util.Log;
 import android.util.Size;
 import android.widget.TextView;
 
@@ -40,7 +39,7 @@ public class MainActivity extends AppCompatActivity {
     private static final String CAMERA_PERMISSION = "android.permission.CAMERA";
 
     private PreviewView previewView;
-    private TextView predictionTextView;
+    private TextView outputTextView;
     private Classifier classifier;
 
     @Override
@@ -49,7 +48,7 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
 
         previewView = (PreviewView)findViewById(R.id.previewView);
-        predictionTextView = (TextView)findViewById(R.id.output_text);
+        outputTextView = (TextView)findViewById(R.id.outputTextView);
         classifier = new Classifier(getAssets());
 
         if(arePermissionsGranted()) {
@@ -77,10 +76,11 @@ public class MainActivity extends AppCompatActivity {
         DisplayMetrics metrics = new DisplayMetrics();
         previewView.getDisplay().getRealMetrics(metrics);
 
-        Size screenSize = new Size(metrics.widthPixels, metrics.widthPixels);
+        Size previewSize = new Size(metrics.widthPixels, metrics.widthPixels);
+        Size analysisSize = new Size(Classifier.INPUT_WIDTH, Classifier.INPUT_HEIGHT);
 
         Preview preview = new Preview.Builder()
-                .setTargetResolution(screenSize)
+                .setTargetResolution(previewSize)
                 .build();
 
         CameraSelector cameraSelector = new CameraSelector.Builder()
@@ -88,7 +88,7 @@ public class MainActivity extends AppCompatActivity {
                 .build();
 
         ImageAnalysis analysis = new ImageAnalysis.Builder()
-                .setTargetResolution(screenSize)
+                .setTargetResolution(analysisSize)
                 .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                 .build();
         analysis.setAnalyzer(Executors.newSingleThreadExecutor(), image -> classify(image));
@@ -98,12 +98,25 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void classify(ImageProxy image) {
+        long startTime = System.currentTimeMillis();
+
         Bitmap bitmap = proxyToBitmap(image);
-        String prediction = classifier.predict(bitmap);
-        runOnUiThread(() -> {
-            predictionTextView.setText(prediction);
-        });
         image.close();
+        String prediction = classifier.predict(bitmap);
+
+        long frameTime = System.currentTimeMillis() - startTime;
+        float fps = 1000.0f / frameTime;
+
+        long inferenceTime = classifier.getLatestInferenceTime();
+
+        runOnUiThread(() -> {
+            outputTextView.setText(createOutputText(prediction, fps, inferenceTime));
+        });
+    }
+
+    private String createOutputText(String prediction, float fps, long inferenceTime)
+    {
+        return String.format("%s\nFPS: %d\nInference time: %dms", prediction, (int)fps, (int)inferenceTime);
     }
 
     private Bitmap proxyToBitmap(ImageProxy image) {
