@@ -4,13 +4,14 @@
 #include <android/asset_manager_jni.h>
 
 #include "ClassifierNetwork.h"
+#include "SegmentatorNetwork.h"
 
-ClassifierNetwork* gNetwork = nullptr;
+//ClassifierNetwork* gClassifierNetwork = nullptr;
+SegmentatorNetwork* gSegmentatorNetwork = nullptr;
 
 extern "C" JNIEXPORT void JNICALL Java_com_arm_armnn_1demo_Classifier_prepareNetwork(JNIEnv *env, jobject thiz, jobject javaAssetManager)
 {
-    // We need to load the network asset into the memory with the AssetManager provided by Activity
-    auto assetManager = AAssetManager_fromJava(env, javaAssetManager);
+    /*auto assetManager = AAssetManager_fromJava(env, javaAssetManager);
 
     AAsset *modelAsset = AAssetManager_open(assetManager, "mobilenet_v2.tflite", AASSET_MODE_UNKNOWN);
     off_t bufferSize = AAsset_getLength(modelAsset);
@@ -18,16 +19,42 @@ extern "C" JNIEXPORT void JNICALL Java_com_arm_armnn_1demo_Classifier_prepareNet
     AAsset_read(modelAsset, modelData.data(), bufferSize);
     AAsset_close(modelAsset);
 
-    gNetwork = new ClassifierNetwork(modelData);
+    gClassifierNetwork = new ClassifierNetwork(modelData);*/
 }
 
 extern "C" JNIEXPORT int JNICALL Java_com_arm_armnn_1demo_Classifier_runNetwork(JNIEnv *env, jobject thiz, jfloatArray imageData)
 {
     jfloat *elements =  env->GetFloatArrayElements(imageData, 0);
-    return gNetwork->run(elements);
+    return 5;
+    //return gClassifierNetwork->run(elements);
 }
 
 extern "C" JNIEXPORT void JNICALL Java_com_arm_armnn_1demo_Classifier_cleanupNetwork(JNIEnv *env, jobject thiz)
 {
-    delete gNetwork;
+    //delete gClassifierNetwork;
+}
+
+extern "C" JNIEXPORT void JNICALL Java_com_arm_armnn_1demo_Segmentator_prepareNetwork(JNIEnv *env, jobject thiz, jobject javaAssetManager, jboolean reduceFp32ToFp16)
+{
+    auto assetManager = AAssetManager_fromJava(env, javaAssetManager);
+
+    AAsset *modelAsset = AAssetManager_open(assetManager, "deconv_fin_munet.tflite", AASSET_MODE_UNKNOWN);
+    off_t bufferSize = AAsset_getLength(modelAsset);
+    std::vector<uint8_t> modelData(bufferSize);
+    AAsset_read(modelAsset, modelData.data(), bufferSize);
+    AAsset_close(modelAsset);
+
+    gSegmentatorNetwork = new SegmentatorNetwork(modelData, reduceFp32ToFp16);
+}
+
+extern "C" JNIEXPORT void JNICALL Java_com_arm_armnn_1demo_Segmentator_runNetwork(JNIEnv *env, jobject thiz, jfloatArray imageData, jfloatArray maskData)
+{
+    jfloat *imageDataElements =  env->GetFloatArrayElements(imageData, 0);
+    jfloat *maskDataElements =  env->GetFloatArrayElements(maskData, 0);
+    gSegmentatorNetwork->run(imageDataElements, maskDataElements);
+}
+
+extern "C" JNIEXPORT void JNICALL Java_com_arm_armnn_1demo_Segmentator_cleanupNetwork(JNIEnv *env, jobject thiz)
+{
+    delete gSegmentatorNetwork;
 }

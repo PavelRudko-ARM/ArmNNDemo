@@ -1,4 +1,4 @@
-#ifndef ARMNN_DEMO_CLASSIFIERNETWORK_H
+/*#ifndef ARMNN_DEMO_CLASSIFIERNETWORK_H
 #define ARMNN_DEMO_CLASSIFIERNETWORK_H
 
 #include <android/log.h>
@@ -27,4 +27,4 @@ class ClassifierNetwork
         IRuntimePtr runtime;
 };
 
-#endif
+#endif*/

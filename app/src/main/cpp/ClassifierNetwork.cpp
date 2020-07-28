@@ -1,4 +1,4 @@
-#include "ClassifierNetwork.h"
+/*#include "ClassifierNetwork.h"
 
 #include <string>
 #include <armnnTfLiteParser/ITfLiteParser.hpp>
@@ -45,3 +45,4 @@ int ClassifierNetwork::run(float *imageData)
     // Choosing the class index with the highest probability
     return std::distance(outputData.begin(), std::max_element(outputData.begin(), outputData.end()));
 }
+*/

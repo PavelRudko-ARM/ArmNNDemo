@@ -8,7 +8,7 @@ add_library(armnnTfLiteParser SHARED IMPORTED)
 set_target_properties(armnn PROPERTIES IMPORTED_LOCATION ${ARMNN_DIR}/bin/${ANDROID_ABI}/libarmnn.so)
 set_target_properties(armnnTfLiteParser PROPERTIES IMPORTED_LOCATION ${ARMNN_DIR}/bin/${ANDROID_ABI}/libarmnnTfLiteParser.so)
 
-add_library(native-lib SHARED native-lib.cpp ClassifierNetwork.cpp)
+add_library(native-lib SHARED native-lib.cpp ClassifierNetwork.cpp SegmentatorNetwork.cpp)
 
 find_library(log-lib log)
 find_library(android-lib android)

@@ -14,12 +14,20 @@ import androidx.core.content.ContextCompat;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.graphics.Color;
 import android.graphics.ImageFormat;
+import android.graphics.Matrix;
 import android.graphics.Rect;
 import android.graphics.YuvImage;
 import android.os.Bundle;
+import android.os.Debug;
 import android.util.DisplayMetrics;
+import android.util.Log;
 import android.util.Size;
+import android.view.Surface;
+import android.widget.CheckBox;
+import android.widget.CompoundButton;
+import android.widget.ImageView;
 import android.widget.TextView;
 
 import com.google.common.util.concurrent.ListenableFuture;
@@ -40,7 +48,11 @@ public class MainActivity extends AppCompatActivity {
 
     private PreviewView previewView;
     private TextView outputTextView;
-    private Classifier classifier;
+    private CheckBox fp16Checkbox;
+    private ImageView imageView;
+    //private Classifier classifier;
+    private Segmentator segmentator;
+    private boolean reduceFp32ToFp16 = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -49,7 +61,10 @@ public class MainActivity extends AppCompatActivity {
 
         previewView = (PreviewView)findViewById(R.id.previewView);
         outputTextView = (TextView)findViewById(R.id.outputTextView);
-        classifier = new Classifier(getAssets());
+        fp16Checkbox = (CheckBox)findViewById(R.id.fp16Checkbox);
+        imageView = (ImageView)findViewById(R.id.imageView);
+        //classifier = new Classifier(getAssets());
+        segmentator = new Segmentator(getAssets(), reduceFp32ToFp16);
 
         if(arePermissionsGranted()) {
             previewView.post(() -> startCamera());
@@ -57,6 +72,17 @@ public class MainActivity extends AppCompatActivity {
         else {
             requestPermissions();
         }
+
+        fp16Checkbox.setChecked(reduceFp32ToFp16);
+        /*fp16Checkbox.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener()
+        {
+            @Override
+            public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+                reduceFp32ToFp16 = isChecked;
+                segmentator.destroy();
+                segmentator = new Segmentator(getAssets(), reduceFp32ToFp16);
+            }
+        });*/
     }
 
     private void startCamera() {
@@ -84,20 +110,21 @@ public class MainActivity extends AppCompatActivity {
                 .build();
 
         CameraSelector cameraSelector = new CameraSelector.Builder()
-                .requireLensFacing(CameraSelector.LENS_FACING_BACK)
+                .requireLensFacing(CameraSelector.LENS_FACING_FRONT)
                 .build();
 
         ImageAnalysis analysis = new ImageAnalysis.Builder()
                 .setTargetResolution(analysisSize)
                 .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                 .build();
-        analysis.setAnalyzer(Executors.newSingleThreadExecutor(), image -> classify(image));
+        //analysis.setAnalyzer(Executors.newSingleThreadExecutor(), image -> classify(image));
+        analysis.setAnalyzer(Executors.newSingleThreadExecutor(), image -> doSegmentation(image));
 
         Camera camera = cameraProvider.bindToLifecycle(this, cameraSelector, preview, analysis);
         preview.setSurfaceProvider(previewView.createSurfaceProvider(camera.getCameraInfo()));
     }
 
-    private void classify(ImageProxy image) {
+    /*private void classify(ImageProxy image) {
         long startTime = System.currentTimeMillis();
 
         Bitmap bitmap = proxyToBitmap(image);
@@ -112,10 +139,79 @@ public class MainActivity extends AppCompatActivity {
         runOnUiThread(() -> {
             outputTextView.setText(createOutputText(prediction, fps, inferenceTime));
         });
+    }*/
+
+    private void doSegmentation(ImageProxy image) {
+        if(reduceFp32ToFp16 != fp16Checkbox.isChecked()) {
+            reduceFp32ToFp16 = fp16Checkbox.isChecked();
+            segmentator.destroy();
+            segmentator = new Segmentator(getAssets(), reduceFp32ToFp16);
+        }
+
+        long startTime = System.currentTimeMillis();
+
+        Bitmap bitmap = proxyToBitmap(image);
+        image.close();
+
+        int rotation = image.getImageInfo().getRotationDegrees();
+        if(rotation != 0) {
+            Matrix matrix = new Matrix();
+            matrix.postRotate(180 - rotation);
+            bitmap = Bitmap.createBitmap(bitmap, 0, 0, bitmap.getWidth(), bitmap.getHeight(), matrix, true);
+        }
+
+        float[] maskData = segmentator.predict(bitmap);
+        bitmap = Bitmap.createScaledBitmap(bitmap, 128, 128, true);
+        applyMask(bitmap, maskData);
+        //Bitmap mask = maskToBitmap(maskData);
+
+        long frameTime = System.currentTimeMillis() - startTime;
+        float fps = 1000.0f / frameTime;
+
+        long inferenceTime = segmentator.getLatestInferenceTime();
+
+        Bitmap finalBitmap = bitmap;
+        runOnUiThread(() -> {
+            outputTextView.setText(createOutputText("", fps, inferenceTime));
+            imageView.setImageBitmap(finalBitmap);
+        });
     }
 
-    private String createOutputText(String prediction, float fps, long inferenceTime)
-    {
+    private void applyMask(Bitmap frame, float[] mask) {
+        for(int y = 0; y < frame.getHeight(); y++) {
+            for(int x = 0; x < frame.getWidth(); x++) {
+                float value = mask[y * frame.getWidth() + x];
+                if(value < 0.5f) {
+                    frame.setPixel(x, y, Color.BLACK);
+                }
+            }
+        }
+    }
+
+    private Bitmap maskToBitmap(float[] mask) {
+        Bitmap bitmap = Bitmap.createBitmap(128, 128, Bitmap.Config.ARGB_8888);
+        for(int y = 0; y < bitmap.getHeight(); y++) {
+            for(int x = 0; x < bitmap.getWidth(); x++) {
+                float value = mask[y * bitmap.getWidth() + x];
+                bitmap.setPixel(x, y, getIntFromColor(value, value, value));
+            }
+        }
+        return bitmap;
+    }
+
+    public int getIntFromColor(float r, float g, float b){
+        int rb = Math.round(255 * r);
+        int gb = Math.round(255 * g);
+        int bb = Math.round(255 * b);
+
+        rb = (rb << 16) & 0x00FF0000;
+        gb = (gb << 8) & 0x0000FF00;
+        bb = bb & 0x000000FF;
+
+        return 0xFF000000 | rb | gb | bb;
+    }
+
+    private String createOutputText(String prediction, float fps, long inferenceTime) {
         return String.format("%s\nFPS: %d\nInference time: %dms", prediction, (int)fps, (int)inferenceTime);
     }
 
